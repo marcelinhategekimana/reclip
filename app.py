@@ -1281,5 +1281,450 @@ def crop_video_task(job_id, video_url, ratio, mode, quality):
         jobs[job_id] = {'status': 'error', 'error': str(e)}
 
 
+@app.route('/api/clip-video', methods=['POST'])
+def clip_video():
+    """
+    Extract clip(s) from a video with auto-detection or manual timestamps.
+
+    Params:
+    - videoUrl: Source video URL
+    - mode: 'auto' (AI detection) or 'manual' (specify times)
+    - startTime: Start time in seconds (manual mode)
+    - endTime: End time in seconds (manual mode)
+    - maxClips: Maximum clips to extract (auto mode, default: 3)
+    - minDuration: Minimum clip duration (default: 30)
+    - maxDuration: Maximum clip duration (default: 60)
+    - addCaptions: Whether to add captions (default: true)
+    - captionStyle: Caption style (default: 'bottom')
+    """
+    try:
+        data = request.get_json()
+        video_url = data.get('videoUrl')
+        mode = data.get('mode', 'manual')  # 'auto' or 'manual'
+        start_time = data.get('startTime', 0)
+        end_time = data.get('endTime')
+        max_clips = data.get('maxClips', 3)
+        min_duration = data.get('minDuration', 30)
+        max_duration = data.get('maxDuration', 60)
+        add_captions = data.get('addCaptions', True)
+        caption_style = data.get('captionStyle', 'bottom')
+        title = data.get('title', '')
+
+        if not video_url:
+            return jsonify({'error': 'videoUrl required'}), 400
+
+        job_id = str(uuid.uuid4())[:8]
+        jobs[job_id] = {'status': 'processing', 'progress': 0}
+
+        # Start clipping in background
+        thread = threading.Thread(
+            target=clip_video_task,
+            args=(job_id, video_url, mode, start_time, end_time,
+                  max_clips, min_duration, max_duration, add_captions, caption_style, title)
+        )
+        thread.start()
+
+        return jsonify({'success': True, 'job_id': job_id})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+def detect_scene_changes(video_path, threshold=0.3):
+    """Detect scene changes in video using FFmpeg scene detection"""
+    import subprocess
+    import json
+
+    try:
+        # Use FFmpeg to detect scenes
+        cmd = [
+            'ffprobe', '-v', 'quiet',
+            '-show_entries', 'frame=pts_time,pkt_dts_time',
+            '-select_streams', 'v',
+            '-of', 'json',
+            '-f', 'lavfi',
+            f"movie={video_path},select='gt(scene,{threshold})',showinfo"
+        ]
+
+        # Simpler approach: use ffmpeg scene detection
+        scene_cmd = [
+            'ffmpeg', '-i', video_path,
+            '-vf', f"select='gt(scene,{threshold})',showinfo",
+            '-f', 'null', '-'
+        ]
+
+        result = subprocess.run(scene_cmd, capture_output=True, text=True, timeout=120)
+
+        # Parse scene timestamps from ffmpeg output
+        scenes = [0.0]  # Always start at 0
+        for line in result.stderr.split('\n'):
+            if 'pts_time:' in line:
+                try:
+                    pts_match = line.split('pts_time:')[1].split()[0]
+                    pts_time = float(pts_match)
+                    if pts_time > scenes[-1] + 5:  # At least 5s apart
+                        scenes.append(pts_time)
+                except:
+                    pass
+
+        return scenes
+    except Exception as e:
+        print(f"Scene detection error: {e}")
+        return [0.0]
+
+
+def find_best_clips(video_path, transcription_result, min_duration=30, max_duration=60, max_clips=3):
+    """
+    Find the best clips based on speech density and content.
+    Returns list of (start_time, end_time, score) tuples.
+    """
+    segments = transcription_result.get('segments', [])
+    if not segments:
+        return []
+
+    # Get video duration
+    import subprocess
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+             '-of', 'json', video_path],
+            capture_output=True, text=True, timeout=30
+        )
+        import json
+        probe_data = json.loads(result.stdout)
+        video_duration = float(probe_data.get('format', {}).get('duration', 0))
+    except:
+        video_duration = segments[-1]['end'] if segments else 60
+
+    # Build clips based on speech segments
+    clips = []
+    window_start = 0
+
+    while window_start < video_duration - min_duration:
+        best_end = window_start + min_duration
+        best_score = 0
+
+        # Try different end points
+        for end_offset in range(min_duration, min(max_duration + 1, int(video_duration - window_start) + 1), 5):
+            window_end = window_start + end_offset
+
+            # Count words in this window
+            word_count = 0
+            engagement_words = 0
+            for seg in segments:
+                if seg['start'] >= window_start and seg['end'] <= window_end:
+                    words = seg.get('text', '').split()
+                    word_count += len(words)
+                    for w in words:
+                        if any(c.isdigit() for c in w) or '$' in w or '%' in w:
+                            engagement_words += 1
+
+            duration = window_end - window_start
+            word_density = word_count / duration if duration > 0 else 0
+            engagement_ratio = engagement_words / max(word_count, 1)
+
+            # Score: word density (50%) + engagement (30%) + optimal duration (20%)
+            duration_score = 1.0 - abs(duration - 45) / 45  # Prefer ~45s clips
+            score = word_density * 0.5 + engagement_ratio * 0.3 + max(duration_score, 0) * 0.2
+
+            if score > best_score:
+                best_score = score
+                best_end = window_end
+
+        if best_score > 0.1:  # Minimum quality threshold
+            clips.append((window_start, best_end, best_score))
+
+        # Move window forward
+        window_start = best_end + 5  # 5s gap between clips
+
+    # Sort by score and return top clips
+    clips.sort(key=lambda x: x[2], reverse=True)
+    return clips[:max_clips]
+
+
+def clip_video_task(job_id, video_url, mode, start_time, end_time,
+                    max_clips, min_duration, max_duration, add_captions, caption_style, title):
+    """Background task to extract and process video clips"""
+    import subprocess
+    import requests
+
+    try:
+        os.makedirs('/tmp/clips', exist_ok=True)
+        work_dir = f'/tmp/clips/{job_id}'
+        os.makedirs(work_dir, exist_ok=True)
+
+        jobs[job_id]['status'] = 'downloading'
+        jobs[job_id]['progress'] = 5
+
+        # Download video
+        print(f"[{job_id}] Downloading video...")
+        video_response = requests.get(video_url, stream=True, timeout=300)
+        input_path = f'{work_dir}/input.mp4'
+        with open(input_path, 'wb') as f:
+            for chunk in video_response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        jobs[job_id]['progress'] = 15
+
+        # Get video duration
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+             '-of', 'json', input_path],
+            capture_output=True, text=True, timeout=30
+        )
+        import json as json_module
+        probe_data = json_module.loads(result.stdout)
+        video_duration = float(probe_data.get('format', {}).get('duration', 60))
+
+        print(f"[{job_id}] Video duration: {video_duration}s")
+
+        clips_to_process = []
+
+        if mode == 'auto':
+            # Auto-detect best clips using transcription
+            jobs[job_id]['status'] = 'transcribing'
+            jobs[job_id]['progress'] = 20
+
+            print(f"[{job_id}] Auto-detecting clips with transcription...")
+
+            # Transcribe first
+            model = get_whisper_model()
+            if model:
+                audio_path = f'{work_dir}/audio.wav'
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', input_path,
+                    '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
+                    audio_path
+                ], capture_output=True, check=True, timeout=120)
+
+                jobs[job_id]['progress'] = 30
+
+                result = model.transcribe(audio_path, word_timestamps=True, verbose=False)
+                jobs[job_id]['progress'] = 50
+
+                # Find best clips based on content
+                best_clips = find_best_clips(
+                    input_path, result,
+                    min_duration=min_duration,
+                    max_duration=max_duration,
+                    max_clips=max_clips
+                )
+
+                if best_clips:
+                    for i, (clip_start, clip_end, score) in enumerate(best_clips):
+                        # Get word timestamps for this clip
+                        clip_words = []
+                        for seg in result.get('segments', []):
+                            for word in seg.get('words', []):
+                                word_start = word.get('start', 0)
+                                word_end = word.get('end', 0)
+                                if word_start >= clip_start and word_end <= clip_end:
+                                    clip_words.append({
+                                        'word': word.get('word', '').strip(),
+                                        'start': word_start - clip_start,  # Relative to clip start
+                                        'end': word_end - clip_start
+                                    })
+
+                        clips_to_process.append({
+                            'index': i,
+                            'start': clip_start,
+                            'end': clip_end,
+                            'score': score,
+                            'word_timestamps': clip_words
+                        })
+
+                    print(f"[{job_id}] Found {len(clips_to_process)} clips")
+                else:
+                    # Fallback: split video into equal chunks
+                    print(f"[{job_id}] No good clips found, splitting evenly")
+                    chunk_duration = min(max_duration, video_duration / max_clips)
+                    for i in range(min(max_clips, int(video_duration / chunk_duration))):
+                        clips_to_process.append({
+                            'index': i,
+                            'start': i * chunk_duration,
+                            'end': min((i + 1) * chunk_duration, video_duration),
+                            'score': 0.5,
+                            'word_timestamps': []
+                        })
+            else:
+                # No Whisper, use scene detection
+                print(f"[{job_id}] Whisper not available, using scene detection")
+                scenes = detect_scene_changes(input_path)
+                for i in range(min(max_clips, len(scenes))):
+                    clip_start = scenes[i]
+                    clip_end = scenes[i + 1] if i + 1 < len(scenes) else video_duration
+                    if clip_end - clip_start >= min_duration:
+                        clips_to_process.append({
+                            'index': i,
+                            'start': clip_start,
+                            'end': min(clip_start + max_duration, clip_end),
+                            'score': 0.5,
+                            'word_timestamps': []
+                        })
+
+        else:
+            # Manual mode - single clip with specified times
+            clip_end_time = end_time if end_time else min(start_time + max_duration, video_duration)
+            clips_to_process.append({
+                'index': 0,
+                'start': start_time,
+                'end': clip_end_time,
+                'score': 1.0,
+                'word_timestamps': []
+            })
+
+            # Transcribe the clip portion if captions needed
+            if add_captions:
+                jobs[job_id]['status'] = 'transcribing'
+                model = get_whisper_model()
+                if model:
+                    # Extract clip audio first
+                    clip_audio_path = f'{work_dir}/clip_audio.wav'
+                    subprocess.run([
+                        'ffmpeg', '-y', '-i', input_path,
+                        '-ss', str(start_time), '-t', str(clip_end_time - start_time),
+                        '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
+                        clip_audio_path
+                    ], capture_output=True, check=True, timeout=120)
+
+                    result = model.transcribe(clip_audio_path, word_timestamps=True, verbose=False)
+
+                    clip_words = []
+                    for seg in result.get('segments', []):
+                        for word in seg.get('words', []):
+                            clip_words.append({
+                                'word': word.get('word', '').strip(),
+                                'start': word.get('start', 0),
+                                'end': word.get('end', 0)
+                            })
+                    clips_to_process[0]['word_timestamps'] = clip_words
+
+        jobs[job_id]['progress'] = 60
+
+        # Process each clip
+        output_clips = []
+        assets_dir = os.path.join(os.path.dirname(__file__), 'assets')
+
+        for clip_info in clips_to_process:
+            clip_idx = clip_info['index']
+            clip_start = clip_info['start']
+            clip_end = clip_info['end']
+            clip_words = clip_info.get('word_timestamps', [])
+
+            jobs[job_id]['status'] = f'processing clip {clip_idx + 1}/{len(clips_to_process)}'
+            print(f"[{job_id}] Processing clip {clip_idx + 1}: {clip_start:.1f}s - {clip_end:.1f}s")
+
+            # Extract clip
+            clip_path = f'{work_dir}/clip_{clip_idx}.mp4'
+            subprocess.run([
+                'ffmpeg', '-y', '-i', input_path,
+                '-ss', str(clip_start), '-t', str(clip_end - clip_start),
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '128k',
+                clip_path
+            ], capture_output=True, check=True, timeout=300)
+
+            # Crop to 9:16
+            cropped_path = f'{work_dir}/clip_{clip_idx}_916.mp4'
+            scale_filter = "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280"
+            subprocess.run([
+                'ffmpeg', '-y', '-i', clip_path,
+                '-vf', scale_filter,
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
+                '-c:a', 'aac', '-b:a', '128k',
+                cropped_path
+            ], capture_output=True, check=True, timeout=300)
+
+            output_path = cropped_path
+
+            # Add captions if available
+            if add_captions and clip_words:
+                ass_content = generate_ass_captions(clip_words, style=caption_style)
+                ass_path = f'{work_dir}/clip_{clip_idx}.ass'
+                with open(ass_path, 'w', encoding='utf-8') as f:
+                    f.write(ass_content)
+
+                captioned_path = f'{work_dir}/clip_{clip_idx}_captioned.mp4'
+                ass_escaped = ass_path.replace(':', '\\:')
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', output_path,
+                    '-vf', f"ass={ass_escaped}",
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
+                    '-c:a', 'copy',
+                    captioned_path
+                ], capture_output=True, check=True, timeout=300)
+
+                if os.path.exists(captioned_path):
+                    output_path = captioned_path
+                    print(f"[{job_id}] Added {len(clip_words)} caption words to clip {clip_idx + 1}")
+
+            output_clips.append({
+                'index': clip_idx,
+                'path': output_path,
+                'start': clip_start,
+                'end': clip_end,
+                'duration': clip_end - clip_start,
+                'score': clip_info.get('score', 0),
+                'word_count': len(clip_words)
+            })
+
+        jobs[job_id]['progress'] = 95
+
+        # Return results
+        jobs[job_id] = {
+            'status': 'done',
+            'progress': 100,
+            'clips': [
+                {
+                    'index': c['index'],
+                    'filepath': c['path'],
+                    'filename': f"clip_{c['index']}_{job_id}.mp4",
+                    'start': c['start'],
+                    'end': c['end'],
+                    'duration': c['duration'],
+                    'score': c['score'],
+                    'word_count': c['word_count']
+                }
+                for c in output_clips
+            ],
+            'total_clips': len(output_clips)
+        }
+
+        print(f"[{job_id}] Clipping complete: {len(output_clips)} clips created")
+
+    except Exception as e:
+        print(f"[{job_id}] Clip error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        jobs[job_id] = {'status': 'error', 'error': str(e)}
+
+
+@app.route('/api/clip-file/<job_id>/<int:clip_index>', methods=['GET'])
+def get_clip_file(job_id, clip_index):
+    """Download a specific clip from a completed job"""
+    if job_id not in jobs:
+        return jsonify({'error': 'Job not found'}), 404
+
+    job = jobs[job_id]
+    if job.get('status') != 'done':
+        return jsonify({'error': 'Job not complete'}), 400
+
+    clips = job.get('clips', [])
+    if clip_index >= len(clips):
+        return jsonify({'error': 'Clip not found'}), 404
+
+    clip = clips[clip_index]
+    filepath = clip.get('filepath')
+
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'Clip file not found'}), 404
+
+    return send_file(
+        filepath,
+        as_attachment=True,
+        download_name=clip.get('filename', f'clip_{clip_index}.mp4')
+    )
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080, debug=True)
