@@ -573,9 +573,10 @@ def generate_ass_captions(word_timestamps, video_width=720, video_height=1280, s
     - Thick outline for readability
     """
 
-    # ASS header with professional styles
-    # Scaled for 720x1280 (from 1080x1920 reference)
-    # Alignment 8 = Top Center, MarginV = 100px from top
+    # ASS header with professional styles for 9:16 vertical video
+    # PlayRes: 720x1280 (9:16 format)
+    # Bottom captions positioned ABOVE the footer (social icons at ~80px from bottom)
+    # MarginV=200 ensures captions are above the KMP footer
     ass_content = """[Script Info]
 Title: KMP Captions
 ScriptType: v4.00+
@@ -586,10 +587,10 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Black,55,&H00FFFFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,0,8,20,20,100,1
-Style: Yellow,Arial Black,55,&H0000FFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,0,8,20,20,100,1
-Style: Bottom,Arial Black,50,&H00FFFFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,20,20,180,1
-Style: BottomYellow,Arial Black,50,&H0000FFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,20,20,180,1
+Style: Default,Arial Black,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
+Style: Yellow,Arial Black,48,&H0000FFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
+Style: Bottom,Arial Black,42,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
+Style: BottomYellow,Arial Black,42,&H0000FFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
