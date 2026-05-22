@@ -560,33 +560,96 @@ def generate_srt_from_caption(caption, title, title_duration, video_duration=60)
     return srt_content
 
 
+def generate_ass_karaoke(word_timestamps, video_width=720, video_height=1280):
+    """Generate ASS subtitles with karaoke-style word highlighting (small, above footer)"""
+
+    # ASS header with styles - positioned above footer (MarginV=150)
+    ass_content = """[Script Info]
+Title: KMP Captions
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,28,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,10,10,150,1
+Style: Highlight,Arial,28,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,10,10,150,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
+    if not word_timestamps:
+        return ass_content
+
+    # Group words into 3-4 word phrases for display
+    phrase_size = 3
+    phrases = []
+    current_phrase = []
+
+    for i, word in enumerate(word_timestamps):
+        current_phrase.append(word)
+        if len(current_phrase) >= phrase_size or i == len(word_timestamps) - 1:
+            if current_phrase:
+                phrases.append(current_phrase)
+                current_phrase = []
+
+    # Generate karaoke-style events
+    for phrase in phrases:
+        if not phrase:
+            continue
+
+        phrase_start = phrase[0]['start']
+        phrase_end = phrase[-1]['end']
+
+        # Format timestamps for ASS (H:MM:SS.cc)
+        def format_time(t):
+            h = int(t // 3600)
+            m = int((t % 3600) // 60)
+            s = int(t % 60)
+            cs = int((t - int(t)) * 100)
+            return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+        start_str = format_time(phrase_start)
+        end_str = format_time(phrase_end)
+
+        # Build karaoke text with word-by-word highlighting
+        # Each word gets highlighted when it's spoken
+        karaoke_text = ""
+        for j, word in enumerate(phrase):
+            word_text = word['word'].upper()
+            word_duration = int((word['end'] - word['start']) * 100)  # in centiseconds
+
+            if j == 0:
+                # First word highlighted immediately
+                karaoke_text += "{\\k" + str(word_duration) + "}" + word_text + " "
+            else:
+                # Subsequent words
+                karaoke_text += "{\\k" + str(word_duration) + "}" + word_text + " "
+
+        ass_content += f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,karaoke,{karaoke_text.strip()}\n"
+
+    return ass_content
+
+
 def generate_srt_from_timestamps(word_timestamps, title, title_duration):
-    """Generate SRT content from word timestamps (synced subtitles)"""
+    """Generate SRT content from word timestamps (synced subtitles) - DEPRECATED, use ASS"""
     srt_content = ""
     cue_number = 1
-
-    # Add title as first subtitle
-    if title:
-        srt_content += f"{cue_number}\n"
-        srt_content += f"00:00:00,000 --> 00:00:{title_duration:02d},000\n"
-        srt_content += f"{title.upper()}\n\n"
-        cue_number += 1
 
     if not word_timestamps:
         return srt_content
 
-    # Group words into 2-word chunks for display
-    for i in range(0, len(word_timestamps), 2):
-        word1 = word_timestamps[i]
-        word2 = word_timestamps[i + 1] if i + 1 < len(word_timestamps) else None
+    # Group words into 3-word chunks for display
+    for i in range(0, len(word_timestamps), 3):
+        words = word_timestamps[i:i+3]
+        if not words:
+            continue
 
-        text = word1['word']
-        start = word1['start']
-        end = word1['end']
-
-        if word2:
-            text += ' ' + word2['word']
-            end = word2['end']
+        text = ' '.join(w['word'] for w in words)
+        start = words[0]['start']
+        end = words[-1]['end']
 
         # Format timestamps
         start_h, start_m = divmod(int(start), 3600)
@@ -912,34 +975,48 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
 
         jobs[job_id]['progress'] = 80
 
-        # Add subtitles if we have captions
-        srt_path = None
+        # Add subtitles if we have captions - use ASS for karaoke-style word highlighting
         if caption or (word_timestamps and len(word_timestamps) > 0):
-            if word_timestamps and len(word_timestamps) > 0:
-                srt_content = generate_srt_from_timestamps(word_timestamps, '', 0)
-            else:
-                srt_content = generate_srt_from_caption(caption, '', 0, video_duration)
-
-            srt_path = f'{work_dir}/captions.srt'
-            with open(srt_path, 'w', encoding='utf-8') as f:
-                f.write(srt_content)
-            print(f"[{job_id}] SRT created: {len(srt_content)} chars")
-
-            # Add subtitles to output - smaller text, positioned above social bar
             final_output = f'{work_dir}/final_with_subs.mp4'
-            # Escape path for FFmpeg (replace : with \:)
-            srt_escaped = srt_path.replace(':', '\\:')
-            sub_cmd = [
-                'ffmpeg', '-y', '-i', output_path,
-                '-vf', f"subtitles={srt_escaped}:force_style='FontName=Arial,FontSize=16,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=3,Outline=2,Shadow=1,MarginV=120,Alignment=2'",
-                '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
-                '-c:a', 'copy',
-                final_output
-            ]
+
+            if word_timestamps and len(word_timestamps) > 0:
+                # Use ASS format for karaoke-style captions (word-by-word highlighting)
+                ass_content = generate_ass_karaoke(word_timestamps)
+                sub_path = f'{work_dir}/captions.ass'
+                with open(sub_path, 'w', encoding='utf-8') as f:
+                    f.write(ass_content)
+                print(f"[{job_id}] ASS karaoke captions created: {len(word_timestamps)} words")
+
+                # Escape path for FFmpeg
+                sub_escaped = sub_path.replace(':', '\\:')
+                sub_cmd = [
+                    'ffmpeg', '-y', '-i', output_path,
+                    '-vf', f"ass={sub_escaped}",
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
+                    '-c:a', 'copy',
+                    final_output
+                ]
+            else:
+                # Fallback to SRT for plain caption text
+                srt_content = generate_srt_from_caption(caption, '', 0, video_duration)
+                sub_path = f'{work_dir}/captions.srt'
+                with open(sub_path, 'w', encoding='utf-8') as f:
+                    f.write(srt_content)
+                print(f"[{job_id}] SRT captions created: {len(srt_content)} chars")
+
+                sub_escaped = sub_path.replace(':', '\\:')
+                sub_cmd = [
+                    'ffmpeg', '-y', '-i', output_path,
+                    '-vf', f"subtitles={sub_escaped}:force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=3,Outline=2,Shadow=1,MarginV=150,Alignment=2'",
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
+                    '-c:a', 'copy',
+                    final_output
+                ]
+
             result = subprocess.run(sub_cmd, capture_output=True, text=True, timeout=600)
             if result.returncode == 0 and os.path.exists(final_output):
                 output_path = final_output
-                print(f"[{job_id}] Subtitles added")
+                print(f"[{job_id}] Karaoke captions burned into video")
             else:
                 print(f"[{job_id}] Subtitle error: {result.stderr[:200]}")
 
