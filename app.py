@@ -489,6 +489,9 @@ def add_captions():
         title_position = data.get('titlePosition', 'center')  # top, center, bottom
         highlight_keywords = data.get('highlightKeywords', [])
 
+        # Caption style options: 'bottom' (default), 'top', 'center'
+        caption_style = data.get('captionStyle', 'bottom')
+
         if not video_url:
             return jsonify({'error': 'videoUrl required'}), 400
 
@@ -499,7 +502,7 @@ def add_captions():
         thread = threading.Thread(
             target=process_video_with_overlays,
             args=(job_id, video_url, caption, word_timestamps, title, title_duration,
-                  show_branding, title_position, highlight_keywords)
+                  show_branding, title_position, highlight_keywords, caption_style)
         )
         thread.start()
 
@@ -721,7 +724,7 @@ def generate_srt_from_timestamps(word_timestamps, title, title_duration):
 
 
 def process_video_with_overlays(job_id, video_url, caption, word_timestamps, title, title_duration,
-                                  show_branding, title_position, highlight_keywords):
+                                  show_branding, title_position, highlight_keywords, caption_style='bottom'):
     """Background task to process video: 9:16 ratio + KMP overlays + captions"""
     import subprocess
     import requests
@@ -1032,12 +1035,12 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
             final_output = f'{work_dir}/final_with_subs.mp4'
 
             if word_timestamps and len(word_timestamps) > 0:
-                # Use ASS format for karaoke-style captions (word-by-word highlighting)
-                ass_content = generate_ass_karaoke(word_timestamps)
+                # Use ASS format with ClippedAI-style captions
+                ass_content = generate_ass_captions(word_timestamps, style=caption_style)
                 sub_path = f'{work_dir}/captions.ass'
                 with open(sub_path, 'w', encoding='utf-8') as f:
                     f.write(ass_content)
-                print(f"[{job_id}] ASS karaoke captions created: {len(word_timestamps)} words")
+                print(f"[{job_id}] ASS captions created: {len(word_timestamps)} words, style={caption_style}")
 
                 # Escape path for FFmpeg
                 sub_escaped = sub_path.replace(':', '\\:')
