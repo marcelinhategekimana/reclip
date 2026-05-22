@@ -885,26 +885,26 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
             # Build complex filter with image overlays
             filter_parts = []
 
-            # Blue gradient at bottom (60% height)
-            filter_parts.append(f"drawbox=x=0:y=h*0.4:w=w:h=h*0.6:color=0x0047AB@0.7:t=fill")
+            # Blue gradient at bottom (50% height for better visibility)
+            filter_parts.append(f"drawbox=x=0:y=h*0.5:w=w:h=h*0.5:color=0x0047AB@0.6:t=fill")
 
-            # Top: KIVU MORNING POST text
+            # Top: KIVU MORNING POST text (larger, more visible)
             filter_parts.append(
-                "drawtext=text='KIVU MORNING POST':fontsize=18:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=15"
+                "drawtext=text='KIVU MORNING POST':fontsize=26:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=18"
             )
 
-            # Title blue box with border (only first 5 seconds)
-            filter_parts.append(f"drawbox=x=8:y={box_y}:w=w-16:h=90:color=0x0047AB@0.95:t=fill:enable='between(t,0,{title_duration})'")
-            filter_parts.append(f"drawbox=x=8:y={box_y}:w=w-16:h=90:color=0x60A5FA:t=3:enable='between(t,0,{title_duration})'")
+            # Title blue box with border (only first N seconds) - LARGER
+            filter_parts.append(f"drawbox=x=10:y={box_y}:w=w-20:h=110:color=0x0047AB@0.95:t=fill:enable='between(t,0,{title_duration})'")
+            filter_parts.append(f"drawbox=x=10:y={box_y}:w=w-20:h=110:color=0x60A5FA:t=4:enable='between(t,0,{title_duration})'")
 
-            # Title text (only first 5 seconds)
+            # Title text (only first N seconds) - LARGER FONT
             filter_parts.append(
-                f"drawtext=text='{safe_title}':fontsize=24:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y={box_y}+30:enable='between(t,0,{title_duration})'"
+                f"drawtext=text='{safe_title}':fontsize=32:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y={box_y}+38:enable='between(t,0,{title_duration})'"
             )
 
-            # Bottom: KIVUMORNINGPOST text
+            # Bottom: KIVUMORNINGPOST text - LARGER
             filter_parts.append(
-                "drawtext=text='KIVUMORNINGPOST':fontsize=14:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y=h-25"
+                "drawtext=text='KIVUMORNINGPOST':fontsize=22:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-28"
             )
 
             filter_str = ','.join(filter_parts)
@@ -926,14 +926,14 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
 
             jobs[job_id]['progress'] = 50
 
-            # Second pass: add logo image overlay (top right)
+            # Second pass: add logo image overlay (top right) - LARGER
             if os.path.exists(text_output) and has_logo:
                 logo_output = f'{work_dir}/with_logo.mp4'
                 logo_cmd = [
                     'ffmpeg', '-y',
                     '-i', text_output,
                     '-i', logo_path,
-                    '-filter_complex', '[1:v]scale=60:-1[logo];[0:v][logo]overlay=W-w-15:40',
+                    '-filter_complex', '[1:v]scale=100:-1[logo];[0:v][logo]overlay=W-w-12:8',
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
                     '-c:a', 'copy',
                     logo_output
@@ -957,7 +957,7 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
                     'ffmpeg', '-y',
                     '-i', output_path,
                     '-i', butterfly_path,
-                    '-filter_complex', '[1:v]scale=40:-1[bf];[0:v][bf]overlay=(W-w)/2:H-70',
+                    '-filter_complex', '[1:v]scale=70:-1[bf];[0:v][bf]overlay=(W-w)/2:H-90',
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
                     '-c:a', 'copy',
                     butterfly_output
@@ -982,12 +982,12 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
                     '-i', social_tt,
                     '-i', social_yt,
                     '-filter_complex',
-                    '[1:v]scale=24:-1[fb];[2:v]scale=24:-1[ig];[3:v]scale=24:-1[tw];[4:v]scale=24:-1[tt];[5:v]scale=24:-1[yt];'
-                    '[0:v][fb]overlay=(W/2)-70:H-50[v1];'
-                    '[v1][ig]overlay=(W/2)-35:H-50[v2];'
-                    '[v2][tw]overlay=(W/2):H-50[v3];'
-                    '[v3][tt]overlay=(W/2)+35:H-50[v4];'
-                    '[v4][yt]overlay=(W/2)+70:H-50',
+                    '[1:v]scale=36:-1[fb];[2:v]scale=36:-1[ig];[3:v]scale=36:-1[tw];[4:v]scale=36:-1[tt];[5:v]scale=36:-1[yt];'
+                    '[0:v][fb]overlay=(W/2)-100:H-55[v1];'
+                    '[v1][ig]overlay=(W/2)-50:H-55[v2];'
+                    '[v2][tw]overlay=(W/2):H-55[v3];'
+                    '[v3][tt]overlay=(W/2)+50:H-55[v4];'
+                    '[v4][yt]overlay=(W/2)+100:H-55',
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
                     '-c:a', 'copy',
                     socials_output
