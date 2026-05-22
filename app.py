@@ -560,21 +560,33 @@ def generate_srt_from_caption(caption, title, title_duration, video_duration=60)
     return srt_content
 
 
-def generate_ass_karaoke(word_timestamps, video_width=720, video_height=1280):
-    """Generate ASS subtitles with karaoke-style word highlighting (small, above footer)"""
+def generate_ass_captions(word_timestamps, video_width=720, video_height=1280, style='default'):
+    """
+    Generate ASS subtitles with ClippedAI-style formatting:
+    - Large bold font (60px for 720p)
+    - Smart word grouping (max 25 chars per line)
+    - Top-center positioning
+    - Yellow highlighting for numbers/keywords
+    - Thick outline for readability
+    """
 
-    # ASS header with styles - positioned above footer (MarginV=150)
+    # ASS header with professional styles
+    # Scaled for 720x1280 (from 1080x1920 reference)
+    # Alignment 8 = Top Center, MarginV = 100px from top
     ass_content = """[Script Info]
 Title: KMP Captions
 ScriptType: v4.00+
 PlayResX: 720
 PlayResY: 1280
-WrapStyle: 0
+WrapStyle: 1
+ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,28,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,10,10,150,1
-Style: Highlight,Arial,28,&H0000FFFF,&H00FFFFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,10,10,150,1
+Style: Default,Arial Black,55,&H00FFFFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,0,8,20,20,100,1
+Style: Yellow,Arial Black,55,&H0000FFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,8,0,8,20,20,100,1
+Style: Bottom,Arial Black,50,&H00FFFFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,20,20,180,1
+Style: BottomYellow,Arial Black,50,&H0000FFFF,&H000000FF,&H40000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,0,2,20,20,180,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -583,54 +595,94 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if not word_timestamps:
         return ass_content
 
-    # Group words into 3-4 word phrases for display
-    phrase_size = 3
-    phrases = []
-    current_phrase = []
+    # Choose base style based on position preference
+    base_style = 'Bottom' if style == 'bottom' else 'Default'
+    highlight_style = 'BottomYellow' if style == 'bottom' else 'Yellow'
 
-    for i, word in enumerate(word_timestamps):
-        current_phrase.append(word)
-        if len(current_phrase) >= phrase_size or i == len(word_timestamps) - 1:
-            if current_phrase:
-                phrases.append(current_phrase)
-                current_phrase = []
+    # Format timestamp for ASS (H:MM:SS.cc)
+    def format_time(t):
+        h = int(t // 3600)
+        m = int((t % 3600) // 60)
+        s = int(t % 60)
+        cs = int((t - int(t)) * 100)
+        return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
-    # Generate karaoke-style events
-    for phrase in phrases:
-        if not phrase:
+    # Smart word grouping: max 25 chars per cue, or gap > 0.5s
+    cues = []
+    current_cue = {
+        'words': [],
+        'start_time': None,
+        'end_time': None
+    }
+
+    for w in word_timestamps:
+        word = w.get('word', '').strip()
+        if not word:
             continue
 
-        phrase_start = phrase[0]['start']
-        phrase_end = phrase[-1]['end']
+        start_time = w.get('start', 0)
+        end_time = w.get('end', 0)
 
-        # Format timestamps for ASS (H:MM:SS.cc)
-        def format_time(t):
-            h = int(t // 3600)
-            m = int((t % 3600) // 60)
-            s = int(t % 60)
-            cs = int((t - int(t)) * 100)
-            return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+        should_start_new = False
+        if current_cue['start_time'] is None:
+            should_start_new = True
+        elif len(' '.join(current_cue['words']) + ' ' + word) > 25:
+            # Line too long, start new cue
+            should_start_new = True
+        elif start_time - current_cue['end_time'] > 0.5:
+            # Gap too long, start new cue
+            should_start_new = True
 
-        start_str = format_time(phrase_start)
-        end_str = format_time(phrase_end)
+        if should_start_new:
+            # Save previous cue if exists
+            if current_cue['words']:
+                cues.append(current_cue)
+            # Start new cue
+            current_cue = {
+                'words': [word],
+                'start_time': start_time,
+                'end_time': end_time
+            }
+        else:
+            # Add to current cue
+            current_cue['words'].append(word)
+            current_cue['end_time'] = end_time
 
-        # Build karaoke text with word-by-word highlighting
-        # Each word gets highlighted when it's spoken
-        karaoke_text = ""
-        for j, word in enumerate(phrase):
-            word_text = word['word'].upper()
-            word_duration = int((word['end'] - word['start']) * 100)  # in centiseconds
+    # Don't forget the last cue
+    if current_cue['words']:
+        cues.append(current_cue)
 
-            if j == 0:
-                # First word highlighted immediately
-                karaoke_text += "{\\k" + str(word_duration) + "}" + word_text + " "
+    # Generate dialogue events with smart color highlighting
+    for cue in cues:
+        start_str = format_time(cue['start_time'])
+        end_str = format_time(cue['end_time'])
+
+        # Build text with color highlighting for numbers/currency
+        line_parts = []
+        for word in cue['words']:
+            word_upper = word.upper()
+            # Check if word contains numbers or currency
+            has_number = any(char.isdigit() for char in word)
+            has_currency = '$' in word or '€' in word or '%' in word
+            is_formatted_number = ',' in word and word.replace(',', '').replace('.', '').isdigit()
+
+            if has_number or has_currency or is_formatted_number:
+                # Apply yellow highlight style
+                line_parts.append('{\\rYellow}' + word_upper + '{\\r' + base_style + '}')
             else:
-                # Subsequent words
-                karaoke_text += "{\\k" + str(word_duration) + "}" + word_text + " "
+                line_parts.append(word_upper)
 
-        ass_content += f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,karaoke,{karaoke_text.strip()}\n"
+        line_text = ' '.join(line_parts)
+
+        ass_content += f"Dialogue: 0,{start_str},{end_str},{base_style},,0,0,0,,{line_text}\n"
 
     return ass_content
+
+
+# Keep old function name as alias for backwards compatibility
+def generate_ass_karaoke(word_timestamps, video_width=720, video_height=1280):
+    """Alias for generate_ass_captions with bottom positioning"""
+    return generate_ass_captions(word_timestamps, video_width, video_height, style='bottom')
 
 
 def generate_srt_from_timestamps(word_timestamps, title, title_duration):
