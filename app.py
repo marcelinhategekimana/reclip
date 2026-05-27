@@ -63,12 +63,20 @@ def health():
     except ImportError:
         pass
 
+    # Check assets
+    assets_dir = os.path.join(os.path.dirname(__file__), 'assets')
+    logo_path = os.path.join(assets_dir, 'kmp-logo-v2.png')
+
     return jsonify({
         'status': 'ok',
         'service': 'reclip-api',
         'whisper': whisper_installed,
         'model': os.getenv('WHISPER_MODEL', 'tiny'),
-        'gpu': os.getenv('GPU_ENABLED', 'false')
+        'gpu': os.getenv('GPU_ENABLED', 'false'),
+        'assets_dir': assets_dir,
+        'assets_exist': os.path.isdir(assets_dir),
+        'logo_exists': os.path.exists(logo_path),
+        'logo_path': logo_path
     })
 
 
