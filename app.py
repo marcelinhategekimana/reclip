@@ -492,6 +492,12 @@ def add_captions():
         # Caption style options: 'bottom' (default), 'top', 'center'
         caption_style = data.get('captionStyle', 'bottom')
 
+        # Skip transcription if subtitles not needed (when caption and wordTimestamps are empty intentionally)
+        skip_transcription = data.get('skipTranscription', False)
+        # Also skip if no caption/timestamps provided and branding requested without subtitles
+        if not caption and not word_timestamps and show_branding:
+            skip_transcription = True
+
         if not video_url:
             return jsonify({'error': 'videoUrl required'}), 400
 
@@ -502,7 +508,7 @@ def add_captions():
         thread = threading.Thread(
             target=process_video_with_overlays,
             args=(job_id, video_url, caption, word_timestamps, title, title_duration,
-                  show_branding, title_position, highlight_keywords, caption_style)
+                  show_branding, title_position, highlight_keywords, caption_style, skip_transcription)
         )
         thread.start()
 
@@ -725,7 +731,7 @@ def generate_srt_from_timestamps(word_timestamps, title, title_duration):
 
 
 def process_video_with_overlays(job_id, video_url, caption, word_timestamps, title, title_duration,
-                                  show_branding, title_position, highlight_keywords, caption_style='bottom'):
+                                  show_branding, title_position, highlight_keywords, caption_style='bottom', skip_transcription=False):
     """Background task to process video: 9:16 ratio + KMP overlays + captions"""
     import subprocess
     import requests
@@ -756,8 +762,8 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
             for chunk in video_response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        # Auto-transcribe if no word timestamps provided
-        if not word_timestamps or len(word_timestamps) == 0:
+        # Auto-transcribe if no word timestamps provided (and not explicitly skipped)
+        if (not word_timestamps or len(word_timestamps) == 0) and not skip_transcription:
             print(f"[{job_id}] No timestamps provided, auto-transcribing with Whisper...")
             jobs[job_id]['status'] = 'transcribing'
             jobs[job_id]['progress'] = 10
