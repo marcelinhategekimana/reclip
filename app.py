@@ -902,9 +902,14 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
                 f"drawtext=text='{safe_title}':fontsize=32:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y={box_y}+38:enable='between(t,0,{title_duration})'"
             )
 
-            # Bottom: KIVUMORNINGPOST text - LARGER
+            # Bottom center: KIVUMORNINGPOST text - LARGER
             filter_parts.append(
-                "drawtext=text='KIVUMORNINGPOST':fontsize=22:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-28"
+                "drawtext=text='KIVUMORNINGPOST':fontsize=22:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=h-50"
+            )
+
+            # Bottom right: www.kivumorningpost.com
+            filter_parts.append(
+                "drawtext=text='www.kivumorningpost.com':fontsize=16:fontcolor=white:borderw=1:bordercolor=black:x=w-text_w-15:y=h-25"
             )
 
             filter_str = ','.join(filter_parts)
@@ -1007,7 +1012,9 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
                 # Title box and text only for first N seconds
                 filters.append(f"drawbox=x=10:y={box_y}:w=w-20:h=100:color=blue@0.85:t=fill:enable='between(t,0,{title_duration})'")
                 filters.append(f"drawtext=text='{safe_title}':fontsize=28:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y={box_y}+35:enable='between(t,0,{title_duration})'")
-                filters.append("drawtext=text='KIVUMORNINGPOST':fontsize=16:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y=h-35")
+                filters.append("drawtext=text='KIVUMORNINGPOST':fontsize=16:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y=h-50")
+                # Bottom right: website URL
+                filters.append("drawtext=text='www.kivumorningpost.com':fontsize=14:fontcolor=white:borderw=1:bordercolor=black:x=w-text_w-15:y=h-25")
 
             filter_str = ','.join(filters) if filters else None
 
