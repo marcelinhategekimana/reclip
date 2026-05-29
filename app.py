@@ -601,10 +601,10 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Black,48,&H00FFFFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
-Style: Yellow,Arial Black,48,&H0000FFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
-Style: Bottom,Arial Black,42,&H00FFFFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
-Style: BottomYellow,Arial Black,42,&H0000FFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
+Style: Default,Arial Black,48,&H00FFFFFF,&H000000FF,&H00000000,&H00AB4700,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
+Style: Yellow,Arial Black,48,&H0000FFFF,&H000000FF,&H00000000,&H00AB4700,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
+Style: Bottom,Arial Black,42,&H00FFFFFF,&H000000FF,&H00000000,&H00AB4700,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
+Style: BottomYellow,Arial Black,42,&H0000FFFF,&H000000FF,&H00000000,&H00AB4700,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -908,7 +908,7 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
             )
 
             # Title blue box with border (only first N seconds) - LARGER
-            filter_parts.append(f"drawbox=x=10:y={box_y}:w=w-20:h=110:color=0x0047AB@0.95:t=fill:enable='between(t,0,{title_duration})'")
+            filter_parts.append(f"drawbox=x=10:y={box_y}:w=w-20:h=110:color=0x0047AB:t=fill:enable='between(t,0,{title_duration})'")
             filter_parts.append(f"drawbox=x=10:y={box_y}:w=w-20:h=110:color=0x60A5FA:t=4:enable='between(t,0,{title_duration})'")
 
             # Title text (only first N seconds) - LARGER FONT
@@ -1024,7 +1024,7 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
             if show_branding:
                 filters.append("drawtext=text='KIVU MORNING POST':fontsize=22:fontcolor=white:borderw=2:bordercolor=black:x=(w-text_w)/2:y=20")
                 # Title box and text only for first N seconds
-                filters.append(f"drawbox=x=10:y={box_y}:w=w-20:h=100:color=blue@0.85:t=fill:enable='between(t,0,{title_duration})'")
+                filters.append(f"drawbox=x=10:y={box_y}:w=w-20:h=100:color=0x0047AB:t=fill:enable='between(t,0,{title_duration})'")
                 filters.append(f"drawtext=text='{safe_title}':fontsize=28:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y={box_y}+35:enable='between(t,0,{title_duration})'")
                 filters.append("drawtext=text='KIVUMORNINGPOST':fontsize=16:fontcolor=white:borderw=1:bordercolor=black:x=(w-text_w)/2:y=h-50")
                 # Bottom right: website URL
@@ -1084,7 +1084,7 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
                 sub_escaped = sub_path.replace(':', '\\:')
                 sub_cmd = [
                     'ffmpeg', '-y', '-i', output_path,
-                    '-vf', f"subtitles={sub_escaped}:force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80AB4700,BorderStyle=3,Outline=2,Shadow=1,MarginV=150,Alignment=2'",
+                    '-vf', f"subtitles={sub_escaped}:force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H00AB4700,BorderStyle=3,Outline=2,Shadow=1,MarginV=150,Alignment=2'",
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
                     '-c:a', 'copy',
                     final_output
