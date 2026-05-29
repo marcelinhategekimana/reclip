@@ -601,10 +601,10 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Black,48,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
-Style: Yellow,Arial Black,48,&H0000FFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
-Style: Bottom,Arial Black,42,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
-Style: BottomYellow,Arial Black,42,&H0000FFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
+Style: Default,Arial Black,48,&H00FFFFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
+Style: Yellow,Arial Black,48,&H0000FFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,8,15,15,120,1
+Style: Bottom,Arial Black,42,&H00FFFFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
+Style: BottomYellow,Arial Black,42,&H0000FFFF,&H000000FF,&H00000000,&H80AB4700,-1,0,0,0,100,100,0,0,1,4,2,2,15,15,200,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -1084,7 +1084,7 @@ def process_video_with_overlays(job_id, video_url, caption, word_timestamps, tit
                 sub_escaped = sub_path.replace(':', '\\:')
                 sub_cmd = [
                     'ffmpeg', '-y', '-i', output_path,
-                    '-vf', f"subtitles={sub_escaped}:force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80000000,BorderStyle=3,Outline=2,Shadow=1,MarginV=150,Alignment=2'",
+                    '-vf', f"subtitles={sub_escaped}:force_style='FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H80AB4700,BorderStyle=3,Outline=2,Shadow=1,MarginV=150,Alignment=2'",
                     '-c:v', 'libx264', '-preset', 'fast', '-crf', '24',
                     '-c:a', 'copy',
                     final_output

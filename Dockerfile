@@ -10,6 +10,9 @@ ENV WHISPER_MODEL=tiny
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    fonts-dejavu-core \
+    fonts-liberation \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies (CPU-only PyTorch for smaller image)
